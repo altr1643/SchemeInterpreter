@@ -72,7 +72,80 @@ def scheme_list(*elements):
 
     # return the resulting scheme list
     return result
-    
+
+# Buffer class to manage tokens in a list and keeps track of current position in the list
+class Buffer:
+    # Initializes buffer object with list of tokens and sets position to 0
+    def __init__(self, tokens):
+        self.tokens = tokens
+        self.pos = 0
+    # Pops first token from buffer and increments position, returning popped token
+    def pop_first(self):
+        token = self.tokens[self.pos]
+        self.pos += 1
+        return token
+    # returns current token in buffer without modifying position
+    def current(self):
+        return self.tokens[self.pos]
+    # Checks for more tokens in buffer by comparing current position with length of tokens list
+    def has_next(self):
+        return self.pos < len(self.tokens)
+
+# Helper function to tokenize a line of scheme code by adding spaces around parans and splitting line into list of tokens    
+def tokenize(line):
+    return line.replace("(", " ( ").replace(")", " ) ").split()
+
+# Helper function to convert individual tokens from strings into python vals
+def atomize(token):
+    # If token is boolean, return corresponding Python bool vals
+    if token == "#t":
+        return True
+    elif token == '#f':
+        return False
+
+    # If token is number, return corresponding int or float vals, otherwise return as string
+    try:
+        return int(token)
+    except ValueError:
+        pass
+    try:
+        return float(token)
+    except ValueError:
+        pass
+    return token
+
+# Takes tokens from Buffer and turns them into Scheme expressions, returning resulting expressions
+def scheme_read(src):
+    # Checks if there are more tokens if buffer, if not, raises Syntax Error for unexpected EOF
+    if not src.has_next():
+        raise SyntaxError("Unexpected EOF while reading")
+    # Pops first token from buffer
+    token = src.pop_first()
+
+    # If token is open parans, calls read_tail to read rest of expression
+    if token == "(":
+        return read_tail(src)
+    # if token is close parans, raises Syntax Error for unexpected close parans
+    elif token == ")":
+        raise SyntaxError("Unexpected )")
+    # If token is neither, calls atomize to convert token into Python val and returns it
+    else:
+        return atomize(token)
+
+# Reads contents of a scheme list after scheme_read encounters open parans
+def read_tail(src):
+    # If no more tokens in buffer, raises Syntax Error for unexpected EOF
+    if not src.has_next():
+        raise SyntaxError("Unexpected EOF while reading")
+
+    # If current token is close parans, pops from buffer and returns nil to indicate end of list
+    if src.current() == ")":
+        src.pop_first()
+        return nil
+    # Calls scheme_read to read first element of list, then recursively calls read_tail to read rest of list and returns Pair
+    first = scheme_read(src)
+    rest = read_tail(src)
+    return Pair(first, rest)
 
 def main():
     # tests
@@ -97,6 +170,13 @@ def main():
     #print(len(list1))
     #print(len(list2))
     #print(len(list3))
+
+    #tokens = tokenize("(+ 1 2)")
+    #src = Buffer(tokens)
+
+    #result = scheme_read(src)
+    #print(result)
+    #print(repr(result))
     
     return
 if __name__ == "__main__":
