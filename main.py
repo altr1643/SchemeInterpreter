@@ -171,6 +171,9 @@ class Frame:
         # If symbol is not found in current frame or parent frames, raises NameError for unbound variable
         else:
             raise NameError(f"Unbound variable: {symbol}")
+    # Returns string representation of Frame
+    def __repr__(self):
+        return f"Frame({self.bindings})"
 
 # Stores a primitive procedure in Scheme
 class PrimProcedure:
@@ -195,11 +198,19 @@ class LambdaProcedure:
 
     # Returns string representation of LambdaProcedure object
     def __repr__(self):
-        return "LabdaProcedure"
+        return f"LambdaProcedure({self.params}, {self.body})"
+
+# Stores an expression and environment so it can be evaluted later for tail-call optimization/deep recursion
+class Thunk:
+    # Receives expression and environment
+    def __init__ (self, expr, env):
+        self.expr = expr
+        self.env = env
+    # Returns string representation of the expression held
+    def __repr__(self):
+        return f"Thunk({self.expr})"
 
 #TODO: Implement the following classes and methods for the Scheme interpreter
-#Class Thunk
-    #__init__()
 #Evaluators and Special Forms Section
 #Global Enviroment and Prims Section
 #REPL Section
@@ -228,13 +239,42 @@ def main():
     #print(len(list2))
     #print(len(list3))
 
-    tokens = tokenize("(+ 1 2)")
-    src = Buffer(tokens)
+    #tokens = tokenize("(+ 1 2)")
+    #src = Buffer(tokens)
+    #result = scheme_read(src)
+    #print(result)
+    #print(repr(result))
 
-    result = scheme_read(src)
-    print(result)
-    print(repr(result))
-    
+    # Frame test
+    env = Frame()
+    env.define("x", 10)
+    env.define("y", 20)
+
+    print(env.lookup("x"))
+    print(env.lookup("y"))
+
+    # parent Frame test
+    child = Frame(env)
+    child.define("z", 30)
+    print(child.lookup("z"))
+    print(child.lookup("x"))
+
+    # PrimProcedure test
+    prim = PrimProcedure(lambda x, y: x + y, "+")
+    print(prim)
+
+    # LambdaProcedure test
+    procedure = LambdaProcedure(
+        scheme_list("x"),
+        scheme_list("+", "x", 10),
+        env
+    )
+    print(procedure)
+
+    #Thunk test
+    thunk = Thunk(scheme_list("+", 1, 2), Frame())
+    print(thunk)
+
     return
 if __name__ == "__main__":
     main()
