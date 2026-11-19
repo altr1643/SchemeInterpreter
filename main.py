@@ -147,6 +147,63 @@ def read_tail(src):
     rest = read_tail(src)
     return Pair(first, rest)
 
+# Frame class to represent an environment frame in Scheme. Stores variable bindings and reference to parent frame for nested scopes
+class Frame:
+    # Initializes Frame obj
+    def __init__(self, parent = None):
+        # Empty dictionary to store variables in the frame
+        self.bindings = {}
+        # Reference to parent frame for nested scopes
+        self.parent = parent
+    
+    # Stores variable and value into the frame's dictionary
+    def define(self, symbol, val):
+        self.bindings[symbol] = val
+
+    # Retrieves the value associated with a variable name
+    def lookup(self, symbol):
+        # Checks if symbol is in current frame's bindings
+        if symbol in self.bindings:
+            return self.bindings[symbol]
+        # If no symbol, checks if parent frame exists, if so, recursively calls lookup on parent frame
+        elif self.parent is not None:
+            return self.parent.lookup(symbol)
+        # If symbol is not found in current frame or parent frames, raises NameError for unbound variable
+        else:
+            raise NameError(f"Unbound variable: {symbol}")
+
+# Stores a primitive procedure in Scheme
+class PrimProcedure:
+    # Initializes PrimProcedure object with a function and optional name.
+    def __init__(self, func, name = None):
+        self.func = func
+        self.name = name
+    # Returns string representation of PrimProcedure object
+    def __repr__(self):
+        return f"PrimProcedure({self.name})"
+
+# Represents Lambda procedure in Scheme that lets users define themselves in scheme
+class LambdaProcedure:
+    # Initializes Lambda Procedure object with parameters, body, and environment
+    def __init__(self, params, body, env):
+        # Parameter names
+        self.params = params
+        # Expression to execute
+        self.body = body
+        # Environment where function was defined
+        self.env = env
+
+    # Returns string representation of LambdaProcedure object
+    def __repr__(self):
+        return "LabdaProcedure"
+
+#TODO: Implement the following classes and methods for the Scheme interpreter
+#Class Thunk
+    #__init__()
+#Evaluators and Special Forms Section
+#Global Enviroment and Prims Section
+#REPL Section
+
 def main():
     # tests
     #empty = Nil()
@@ -171,12 +228,12 @@ def main():
     #print(len(list2))
     #print(len(list3))
 
-    #tokens = tokenize("(+ 1 2)")
-    #src = Buffer(tokens)
+    tokens = tokenize("(+ 1 2)")
+    src = Buffer(tokens)
 
-    #result = scheme_read(src)
-    #print(result)
-    #print(repr(result))
+    result = scheme_read(src)
+    print(result)
+    print(repr(result))
     
     return
 if __name__ == "__main__":
