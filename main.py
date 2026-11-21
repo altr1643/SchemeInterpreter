@@ -9,6 +9,8 @@ class Nil:
         return "()"
     def __len__(self):
         return 0
+    def map(self, func):
+        return self
 
 nil = Nil()
 
@@ -48,6 +50,10 @@ class Pair:
         if rest is not nil:
             raise TypeError("Length is only defined for proper lists")
         return n
+
+    # handles a list that contains elements, applies the given function to first element, then calls map on rest of list
+    def map(self, func):
+        return Pair(func(self.first), self.second.map(func))
     
 # Helper function to convert Scheme expressions to string representation
 def scheme_str(expr):
@@ -175,15 +181,29 @@ class Frame:
     def __repr__(self):
         return f"Frame({self.bindings})"
 
+    # When Scheme function is called, creates own enviroment to store params and arg values
+    def make_child_frame(self, formals, vals):
+        child = Frame(self)
+        while isinstance(formals, Pair) and isinstance(vals, Pair):
+            child.define(formals.first, vals.first)
+            formals = formals.second
+            vals = vals.second
+        if isinstance(formals, str):
+            child.define(formals, vals)
+        elif formals is not Nil or vals is not nil:
+            raise TypeError("argument count mismatch")
+
 # Stores a primitive procedure in Scheme
 class PrimProcedure:
-    # Initializes PrimProcedure object with a function and optional name.
-    def __init__(self, func, name = None):
+    # Initializes PrimProcedure object with a function and optional name, and environment
+    def __init__(self, func, name = None, use_env = False):
         self.func = func
         self.name = name
+        self.use_env = use_env
     # Returns string representation of PrimProcedure object
     def __repr__(self):
         return f"PrimProcedure({self.name})"
+    
 
 # Represents Lambda procedure in Scheme that lets users define themselves in scheme
 class LambdaProcedure:
@@ -210,10 +230,98 @@ class Thunk:
     def __repr__(self):
         return f"Thunk({self.expr})"
 
+# returns values that don't need further evaluation
+def is_self_eval(expr):
+    return isinstance(expr, (int, float, bool)) or (isinstance(expr, str) and expr.startwith('"'))
+
+# Takes scheme expression and environment, then determines the meaning and evaluates 
+def scheme_eval(expr, env, tail = False):
+    while True:
+        # Numbers and bools return themselves
+        if is_self_eval(expr):
+            return expr
+        # Symbols and strings are looked up in environment
+        if isinstance(expr, str):
+            return env.lookup(expr)
+        # Bad input
+        if not isinstance(expr, Pair):
+            raise SyntaxError("Malformed Expression")
+    
+        # Stores operator and operands
+        first, rest = expr.first, expr.second
+
+        # return expression as written in scheme
+        if first == "quote":
+            return rest.first
+
+        # if special form in scheme
+        if first == "if":
+            test = scheme_eval(rest.first, env)
+
+            # if evals to true
+            if test is not False:
+                expr = rest.second.first
+            # if evals to false
+            else:
+                expr = rest.second.second.first
+            continue
+        
+        # cond special form in scheme
+        if first == "cond":
+            # Loops through each condition clause
+            while rest is not nil:
+                # get current clause
+                clause = rest.first
+
+                # Get condition from the clause
+                test = clause.first
+
+                # Check if condition is "else" or evalues to true
+                if test == "else" or scheme_eval(test, env) is not False:
+                     
+                    # If clause has no body, return condition
+                    if clause.second is nil:
+                        return test
+
+                    #Turn clause body into a begin expression
+                    expr = Pair("begin", clause.second)
+                    break
+                # Move to next condition clause
+                rest = rest.second
+            # If no condition matched
+            else:
+                return None
+            
+            continue
+
+        # And special form in scheme
+        if first == "and":
+            # evals each expression except last one
+            while rest.second is not nil:
+                if scheme_eval(rest.first, env) is False:
+                    return False
+                
+                rest = rest.second
+            
+            # If no expressions remain    
+            if rest is nil:
+                return True
+            
+            #Evaluates final expression in the main loop
+            expr = rest.first
+            continue
+        #TODO:
+        #or, define, lambda, begin, let, apply, tail call optimization
+        
+    
 #TODO: Implement the following classes and methods for the Scheme interpreter
+
 #Evaluators and Special Forms Section
+    # Expressions are evaluated, procedures executed, and special forms like if, define, and lambda are handled, and tail-call logic for recursion
 #Global Enviroment and Prims Section
+    # Sets up the build up scheme functions and operators
 #REPL Section
+    # Read-Eval-Print loop
 
 def main():
     # tests
