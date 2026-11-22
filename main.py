@@ -60,9 +60,16 @@ def scheme_str(expr):
     # if expr is nil, return empty list
     if expr is nil:
         return "()"
-    # if expr is Pair, return string representation
+    # Convert python bools to Scheme bools
+    elif expr is True:
+        return '#t'
+    elif expr is False:
+        return '#f'
+
+    # If expr is Pair, return string representation
     elif isinstance(expr, Pair):
         return str(expr)
+    
     # if expr is neither, return using Python's regular str()
     else:
         return str(expr)
@@ -183,15 +190,25 @@ class Frame:
 
     # When Scheme function is called, creates own enviroment to store params and arg values
     def make_child_frame(self, formals, vals):
+        
+        # Create child frame connected to current frame
         child = Frame(self)
+
+        # Assign parameters to corresponding arguments
         while isinstance(formals, Pair) and isinstance(vals, Pair):
             child.define(formals.first, vals.first)
             formals = formals.second
             vals = vals.second
+        # Handle variable number of arguments
         if isinstance(formals, str):
             child.define(formals, vals)
-        elif formals is not Nil or vals is not nil:
+        
+        # Check for mismatched argument counts
+        elif formals is not nil or vals is not nil:
             raise TypeError("argument count mismatch")
+
+        # Return child when completed
+        return child
 
 # Stores a primitive procedure in Scheme
 class PrimProcedure:
@@ -232,7 +249,7 @@ class Thunk:
 
 # returns values that don't need further evaluation
 def is_self_eval(expr):
-    return isinstance(expr, (int, float, bool)) or (isinstance(expr, str) and expr.startwith('"'))
+    return isinstance(expr, (int, float, bool)) or (isinstance(expr, str) and expr.startswith('"'))
 
 # Takes scheme expression and environment, then determines the meaning and evaluates 
 def scheme_eval(expr, env, tail = False):
@@ -276,18 +293,24 @@ def scheme_eval(expr, env, tail = False):
                 # Get condition from the clause
                 test = clause.first
 
-                # Check if condition is "else" or evalues to true
-                if test == "else" or scheme_eval(test, env) is not False:
-                     
+                # Check if condition is "else" or evaluates to true
+                if test == "else":
+                    test_val = True
+                else:
+                    test_val = scheme_eval(test, env)
+
+                if test_val is not False:
                     # If clause has no body, return condition
                     if clause.second is nil:
-                        return test
+                        return test_val
 
                     #Turn clause body into a begin expression
                     expr = Pair("begin", clause.second)
                     break
+
                 # Move to next condition clause
                 rest = rest.second
+
             # If no condition matched
             else:
                 return None
@@ -296,6 +319,8 @@ def scheme_eval(expr, env, tail = False):
 
         # And special form in scheme
         if first == "and":
+            if rest is nil:
+                return True
             # evals each expression except last one
             while rest.second is not nil:
                 if scheme_eval(rest.first, env) is False:
@@ -310,19 +335,169 @@ def scheme_eval(expr, env, tail = False):
             #Evaluates final expression in the main loop
             expr = rest.first
             continue
-        #TODO:
-        #or, define, lambda, begin, let, apply, tail call optimization
-        
+
+        # Or special form in scheme
+        if first == "or":
+            if rest is nil:
+                return False
+            
+            # Evaluate each expression except last one
+            while rest.second is not nil:
+                value = scheme_eval(rest.first, env)
+
+                # Return immediately if val is not False
+                if value is not False:
+                    return value
+                
+                # next expression
+                rest = rest.second
+            
+            # If no expressions remain, return False
+            if rest is nil:
+                return False
+
+            # Evaluate last expression in the main loop
+            expr = rest.first
+            continue
+
+        # define special form in scheme
+        if first == "define":
+            target = rest.first
+
+            # Defines a variable. Evaluates the assigned expression and stores result in the environment
+            if isinstance(target, str):
+                val = scheme_eval(rest.second.first, env)
+                env.define(target, val)
+                return target
+
+            # Defines a function in scheme. Creates a LambdaProcedure containing parameters, function body, and current environment
+            elif isinstance(target, Pair):
+                name = target.first
+                params = target.second
+                body = rest.second
+
+                procedure = LambdaProcedure(params, body, env)
+                env.define(name, procedure)
+
+                return name
+            
+        # Lambda special form in scheme
+        if first == "lambda":
+            params = rest.first
+            body = rest.second
+
+            return LambdaProcedure(params, body, env)
+
+        # Begin special form in scheme
+        if first == "begin":
+            if rest is nil:
+                return None
+            # Evaluate every expression except last
+            while rest.second is not nil:
+                scheme_eval(rest.first, env)
+                rest = rest.second
+
+            # Evaluate final expression in main loop
+            expr = rest.first
+            continue
+
+        # Let special form in scheme
+        if first == "let":
+            bindings = rest.first
+            body = rest.second
+
+            # Create a new child environment
+            new_env = Frame(env)
+
+            # Evaluate and store each variable binding
+            while bindings is not nil:
+                binding = bindings.first
+                symb = binding.first
+                val = scheme_eval(binding.second.first, env)
+
+                new_env.define(symb, val)
+                bindings = bindings.second
+
+            expr = Pair("begin", body)
+            env = new_env
+            continue
+
+        # Evaluate operator to get to procedure
+        procedure = scheme_eval(first, env)
+
+        # Evaluate all arguments
+        args = rest.map(lambda arg: scheme_eval(arg, env))
+
+        # Apply procedure to the evaluated arguments
+        return scheme_apply(procedure, args, env)
+
+# Takes procedure and its args, then executes procedure
+def scheme_apply(procedure, args, env, tail = False):
+    # Handle python procedures
+    if isinstance(procedure, PrimProcedure):
+        arguments = []
+
+        # Convert scheme args into Python list
+        while args is not nil:
+            arguments.append(args.first)
+            args = args.second
+
+        # Pass environment if the procedure requires it
+        if procedure.use_env:
+            arguments.append(env)
+
+        return procedure.func(*arguments)
+    # Handles user defined lambda procedures
+    elif isinstance(procedure, LambdaProcedure):
+        # Create child frame with parameters and arguments
+        new_env = procedure.env.make_child_frame(procedure.params, args)
+
+        # Evaluates procedure body in new environment
+        return scheme_eval(Pair("begin", procedure.body), new_env)
+
+# Creates global environment for Scheme
+def create_global_frame():
+    env = Frame()
+
+    # Subtraction helper function
+    def subtract(first, *rest):
+        if not rest:
+            return -first
+
+        for num in rest:
+            first -= num
+        return first
+
+    # Multiplication helper function
+    def multiply(*args):
+        result = 1
+        for num in args:
+            result *= num
+        return result
+
+    # Division helper function
+    def divide(first, *rest):
+        if not rest:
+            return 1 / first
+        for num in rest:
+            first /= num
+        return first 
+    
+    # +, -, *, / primitive procedures
+    env.define("+", PrimProcedure(lambda *args: sum(args), name = "+"))
+    env.define("-", PrimProcedure(subtract, name = "-"))
+    env.define("*", PrimProcedure(multiply, name = "*"))
+    env.define("/", PrimProcedure(divide, name = "/"))
+
+    return env
     
 #TODO: Implement the following classes and methods for the Scheme interpreter
-
-#Evaluators and Special Forms Section
-    # Expressions are evaluated, procedures executed, and special forms like if, define, and lambda are handled, and tail-call logic for recursion
-#Global Enviroment and Prims Section
-    # Sets up the build up scheme functions and operators
-#REPL Section
-    # Read-Eval-Print loop
-
+# Comparison Primitives ( =, <, >, <=, >= )
+# List Primitives ( cons, car, cdr, list, length, null )
+# Type-checking and Utility Primitives ( number?, bool?, Pair? not, abs, min, max )
+# Global environment initialization
+# REPL
+# Thunk functionality
 def main():
     # tests
     #empty = Nil()
@@ -354,34 +529,57 @@ def main():
     #print(repr(result))
 
     # Frame test
-    env = Frame()
-    env.define("x", 10)
-    env.define("y", 20)
+    #env = Frame()
+    #env.define("x", 10)
+    #env.define("y", 20)
 
-    print(env.lookup("x"))
-    print(env.lookup("y"))
+    #print(env.lookup("x"))
+    #print(env.lookup("y"))
 
     # parent Frame test
-    child = Frame(env)
-    child.define("z", 30)
-    print(child.lookup("z"))
-    print(child.lookup("x"))
+    #child = Frame(env)
+    #child.define("z", 30)
+    #print(child.lookup("z"))
+    #print(child.lookup("x"))
 
     # PrimProcedure test
-    prim = PrimProcedure(lambda x, y: x + y, "+")
-    print(prim)
+    #prim = PrimProcedure(lambda x, y: x + y, "+")
+    #print(prim)
 
     # LambdaProcedure test
-    procedure = LambdaProcedure(
-        scheme_list("x"),
-        scheme_list("+", "x", 10),
-        env
-    )
-    print(procedure)
+    #procedure = LambdaProcedure(
+    #    scheme_list("x"),
+    #    scheme_list("+", "x", 10),
+    #    env
+    #)
+    #print(procedure)
 
     #Thunk test
-    thunk = Thunk(scheme_list("+", 1, 2), Frame())
-    print(thunk)
+    #thunk = Thunk(scheme_list("+", 1, 2), Frame())
+    #print(thunk)
+
+    global_env = create_global_frame()
+
+    # Basic arith test with manually created Pair objects
+    print(scheme_eval(Pair("+", scheme_list(10, 5)), global_env))
+    print(scheme_eval(Pair("-", scheme_list(10, 5)), global_env))
+    print(scheme_eval(Pair("*", scheme_list(10, 5)), global_env))
+    print(scheme_eval(Pair("/", scheme_list(10, 5)), global_env))
+
+    # Test multiple arguments
+    print(scheme_eval(Pair("+", scheme_list(1, 2, 3, 4)), global_env))
+    print(scheme_eval(Pair("-", scheme_list(20, 3, 2)), global_env))
+    print(scheme_eval(Pair("*", scheme_list(2, 3, 4)), global_env))
+
+    # Test single argument
+    print(scheme_eval(Pair("-", scheme_list(5)), global_env))
+    print(scheme_eval(Pair("/", scheme_list(4)), global_env))
+
+    # Test for scheme-style bool returns
+    print(scheme_str(True))
+    print(scheme_str(False))
+    print(scheme_str(10))
+
 
     return
 if __name__ == "__main__":
